@@ -134,23 +134,249 @@ document.addEventListener('DOMContentLoaded', () => {
         const div = document.createElement('div');
         div.className = 'item';
         const img = document.createElement('img');
-        img.className = 'thumb';
+        img.className = 'thumb thumb-large';
         if (it.photo_key) img.src = `${window.APP_CONFIG.readingApiBase}/v1/photo?key=${encodeURIComponent(it.photo_key)}`;
         else img.classList.add('hidden');
         const meta = document.createElement('div');
         meta.className = 'meta';
         const kid = document.createElement('div');
-        kid.className = 'kid'; kid.textContent = (it.child_name || '');
+        kid.className = 'kid';
+        const childName = it.child_name || (children.find(c => c.id === it.child_id)?.name) || (typeof it.child_id === 'string' ? it.child_id : '');
+        const pagesForEntry = Number(it.pages ?? it.pages_read);
+        const bookLabel = it.book_title ? it.book_title : '';
+        const headerParts = [];
+        if (childName) headerParts.push(childName);
+        if (!Number.isNaN(pagesForEntry) && pagesForEntry > 0) headerParts.push(`${pagesForEntry} pages`);
+        if (bookLabel) headerParts.push(bookLabel);
+        kid.textContent = headerParts.join(' - ') || bookLabel || childName || 'Reader';
         const date = document.createElement('div');
         date.className = 'date'; date.textContent = fmtHuman(it.created_at || it.date || '');
         const text = document.createElement('div');
         text.className = 'small';
-        const parts = [];
-        if (it.book_title) parts.push(`“${it.book_title}”`);
-        const pages = Number(it.pages ?? it.pages_read);
-        if (!Number.isNaN(pages) && pages > 0) parts.push(`${pages} pages`);
-        if (it.notes) parts.push(`— ${it.notes}`);
-        text.textContent = parts.join(', ');
+        const commentParts = [];
+        if (it.notes) commentParts.push(`"${it.notes}"`);
+        const commentName = childName || 'Reader';
+        if (commentName) commentParts.push(`- ${commentName}`);
+        text.textContent = commentParts.join(' ').trim();
+
+        const interactions = document.createElement('div');
+        interactions.className = 'interactions';
+
+        const likeRow = document.createElement('div');
+        likeRow.className = 'like-row';
+        const likeBtn = document.createElement('button');
+        likeBtn.type = 'button';
+        likeBtn.className = 'like-btn';
+        likeBtn.textContent = 'Like';
+        const likeIcon = document.createElement('i');
+        likeIcon.className = 'icon icon-heart';
+        likeBtn.appendChild(likeIcon);
+        const likeLabel = document.createElement('span');
+        likeLabel.className = 'hint';
+        likeLabel.textContent = 'Loading likes...';
+        likeRow.appendChild(likeBtn);
+        likeRow.appendChild(likeLabel);
+        interactions.appendChild(likeRow);
+
+        const commentSection = document.createElement('div');
+        commentSection.className = 'comment-section';
+
+        const commentHeaderRow = document.createElement('div');
+        commentHeaderRow.className = 'comment-header-row';
+        const commentHeaderTitle = document.createElement('div');
+        commentHeaderTitle.textContent = 'Comments';
+        const commentCountEl = document.createElement('span');
+        commentCountEl.className = 'hint';
+        commentCountEl.textContent = '0';
+        commentHeaderRow.appendChild(commentHeaderTitle);
+        commentHeaderRow.appendChild(commentCountEl);
+        commentSection.appendChild(commentHeaderRow);
+
+        const commentList = document.createElement('div');
+        commentList.className = 'comment-list';
+        commentList.innerHTML = '<div class="hint">Loading comments...</div>';
+        commentSection.appendChild(commentList);
+
+        const commentForm = document.createElement('form');
+        commentForm.className = 'comment-form';
+        const commentTextInput = document.createElement('textarea');
+        commentTextInput.placeholder = 'Share a comment';
+        commentTextInput.required = true;
+        const commentSide = document.createElement('div');
+        commentSide.className = 'comment-side';
+        const commentNameInput = document.createElement('input');
+        commentNameInput.type = 'text';
+        commentNameInput.placeholder = 'Your name';
+        commentNameInput.required = true;
+        const commentSubmit = document.createElement('button');
+        commentSubmit.type = 'submit';
+        commentSubmit.className = 'btn secondary small';
+        const commentSubmitDefault = 'Post comment';
+        commentSubmit.textContent = commentSubmitDefault;
+        commentSide.appendChild(commentNameInput);
+        commentSide.appendChild(commentSubmit);
+        commentForm.appendChild(commentTextInput);
+        commentForm.appendChild(commentSide);
+        commentSection.appendChild(commentForm);
+
+        const commentStatus = document.createElement('div');
+        commentStatus.className = 'status';
+        commentSection.appendChild(commentStatus);
+
+        interactions.appendChild(commentSection);
+
+        meta.appendChild(kid);
+        meta.appendChild(date);
+        meta.appendChild(text);
+        meta.appendChild(interactions);
+
+        let commentCount = 0;
+        function updateCommentCount(){
+          commentCountEl.textContent = String(commentCount);
+        }
+        updateCommentCount();
+
+        function normaliseLikeCount(res){
+          if (typeof res === 'number' && Number.isFinite(res)) return res;
+          if (typeof res === 'string' && res.trim() !== ''){
+            const num = Number(res);
+            if (!Number.isNaN(num)) return num;
+          }
+          if (Array.isArray(res)) return res.length;
+          if (res && typeof res === 'object'){
+            const candidate = res.count ?? res.total ?? res.likes ?? res.likeCount ?? res.value;
+            if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate;
+            if (typeof candidate === 'string'){
+              const num = Number(candidate);
+              if (!Number.isNaN(num)) return num;
+            }
+          }
+          return 0;
+        }
+
+        async function refreshLikes(){
+          likeLabel.textContent = 'Loading likes...';
+          likeLabel.className = 'hint';
+          try{
+            const res = await apiGET(readingApiBase, `/v1/entries/${encodeURIComponent(it.id)}/likes`);
+            const count = normaliseLikeCount(res);
+            likeLabel.textContent = `${count} ${count === 1 ? 'like' : 'likes'}`;
+          }catch(e){
+            likeLabel.textContent = 'Likes unavailable';
+            likeLabel.classList.add('err');
+          }
+        }
+
+        likeBtn.addEventListener('click', async () => {
+          likeBtn.disabled = true;
+          const previous = likeLabel.textContent;
+          likeLabel.textContent = 'Sending...';
+          likeLabel.className = 'hint';
+          try{
+            const res = await apiPOSTjson(readingApiBase, `/v1/entries/${encodeURIComponent(it.id)}/likes`, {});
+            const count = normaliseLikeCount(res);
+            if (Number.isFinite(count)) {
+              likeLabel.textContent = `${count} ${count === 1 ? 'like' : 'likes'}`;
+            } else {
+              await refreshLikes();
+            }
+          }catch(e){
+            likeLabel.textContent = e.message || 'Failed to like';
+            likeLabel.classList.add('err');
+          }finally{
+            likeBtn.disabled = false;
+            if (likeLabel.textContent === 'Sending...') likeLabel.textContent = previous;
+          }
+        });
+
+        function normaliseComments(res){
+          if (Array.isArray(res)) return res;
+          if (res && typeof res === 'object'){
+            if (Array.isArray(res.comments)) return res.comments;
+            if (Array.isArray(res.data)) return res.data;
+            if (Array.isArray(res.items)) return res.items;
+          }
+          return [];
+        }
+
+        async function loadComments(){
+          commentList.innerHTML = '<div class="hint">Loading comments...</div>';
+          try{
+            const res = await apiGET(readingApiBase, `/v1/entries/${encodeURIComponent(it.id)}/comments`);
+            const list = normaliseComments(res);
+            commentCount = list.length;
+            if (!list.length){
+              commentList.innerHTML = '<div class="hint">No comments yet.</div>';
+              updateCommentCount();
+              return;
+            }
+            commentList.innerHTML = '';
+            list.forEach(entryComment => {
+              const name = entryComment.name || entryComment.author || entryComment.user || 'Anonymous';
+              const message = entryComment.comment ?? entryComment.text ?? entryComment.notes ?? '';
+              const timestamp = entryComment.created_at || entryComment.updated_at || entryComment.date || null;
+              const commentEl = document.createElement('div');
+              commentEl.className = 'comment';
+              const headerEl = document.createElement('div');
+              headerEl.className = 'comment-header';
+              headerEl.textContent = name;
+              commentEl.appendChild(headerEl);
+              if (message){
+                const bodyEl = document.createElement('div');
+                bodyEl.className = 'comment-body';
+                bodyEl.textContent = message;
+                commentEl.appendChild(bodyEl);
+              }
+              if (timestamp){
+                const dateEl = document.createElement('div');
+                dateEl.className = 'comment-date';
+                dateEl.textContent = fmtHuman(timestamp);
+                commentEl.appendChild(dateEl);
+              }
+              commentList.appendChild(commentEl);
+            });
+            updateCommentCount();
+          }catch(e){
+            commentList.innerHTML = '<div class="hint err">Comments unavailable.</div>';
+            commentCount = 0;
+            updateCommentCount();
+          }
+        }
+
+        commentForm.addEventListener('submit', async evt => {
+          evt.preventDefault();
+          const nameValue = commentNameInput.value.trim();
+          const commentValue = commentTextInput.value.trim();
+          commentStatus.textContent = '';
+          commentStatus.className = 'status';
+          if (!nameValue || !commentValue){
+            commentStatus.textContent = 'Enter your name and comment.';
+            commentStatus.classList.add('err');
+            return;
+          }
+          commentSubmit.disabled = true;
+          commentSubmit.textContent = 'Posting...';
+          try{
+            await apiPOSTjson(readingApiBase, `/v1/entries/${encodeURIComponent(it.id)}/comments`, {
+              name: nameValue,
+              comment: commentValue
+            });
+            commentStatus.textContent = 'Comment posted!';
+            commentStatus.classList.add('ok');
+            commentNameInput.value = '';
+            commentTextInput.value = '';
+            await loadComments();
+          }catch(e){
+            commentStatus.textContent = e.message || 'Failed to post comment.';
+            commentStatus.classList.add('err');
+          }finally{
+            commentSubmit.disabled = false;
+            commentSubmit.textContent = commentSubmitDefault;
+          }
+        });
+
+        refreshLikes();
+        loadComments();
 
         // Admin delete button if ?admin=TOKEN present
         const qs = new URLSearchParams(location.search);
@@ -171,8 +397,9 @@ document.addEventListener('DOMContentLoaded', () => {
           actions.appendChild(del);
         }
 
-        meta.appendChild(kid); meta.appendChild(date); meta.appendChild(text); 
-        div.appendChild(img); div.appendChild(meta); if (actions.childNodes.length) div.appendChild(actions);
+        div.appendChild(img);
+        div.appendChild(meta);
+        if (actions.childNodes.length) div.appendChild(actions);
         feed.appendChild(div);
       });
       if (!items.length) {
