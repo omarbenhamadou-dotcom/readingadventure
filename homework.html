@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Homework • Family</title>
+  <link rel="stylesheet" href="./_shared.css"/>
+  <script defer src="./config.js"></script>
+  <script defer src="./_shared.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title">📝 Homework</div>
+    <div class="nav">
+      <a href="./index.html">Reading</a>
+      <a href="./homework.html">Homework</a>
+      <a href="./parent.html">Parent</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="field">
+        <label>Student</label>
+        <select id="student"></select>
+      </div>
+      <div class="field">
+        <label>Homework</label>
+        <input id="hwTitle" type="text"/>
+      </div>
+      <div class="field" style="grid-column: 1 / -1">
+        <label>What did you work on?</label>
+        <textarea id="hwNotes"></textarea>
+      </div>
+      <div class="field">
+        <label>Take a photo of your homework</label>
+        <input id="hwPhoto" class="hidden" type="file" accept="image/*" capture="environment"/>
+        <div class="row">
+          <button class="icon-btn" id="btnPhotoHW"><i class="icon icon-camera"></i></button>
+          <span id="hwPhotoStatus" class="hint">No photo yet</span>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="btnSubmitHW">Submit</button>
+      <div id="hwSubmitStatus" class="status"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div class="title" style="font-size:18px">🗂️ What we worked on before</div>
+      <div class="hint">Newest first</div>
+    </div>
+    <div id="hwFeed" class="list"></div>
+    <div id="hwFeedStatus" class="status"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const { homeworkApiBase, children } = window.APP_CONFIG;
+  const studentSel = document.getElementById('student');
+  const hwTitle = document.getElementById('hwTitle');
+  const hwNotes = document.getElementById('hwNotes');
+  const hwPhoto = document.getElementById('hwPhoto');
+  const btnPhotoHW = document.getElementById('btnPhotoHW');
+  const hwPhotoStatus = document.getElementById('hwPhotoStatus');
+  const btnSubmitHW = document.getElementById('btnSubmitHW');
+  const hwSubmitStatus = document.getElementById('hwSubmitStatus');
+  const hwFeed = document.getElementById('hwFeed');
+  const hwFeedStatus = document.getElementById('hwFeedStatus');
+
+  children.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.name;
+    studentSel.appendChild(opt);
+  });
+
+  let uploadedKey = null;
+
+  btnPhotoHW.addEventListener('click', () => hwPhoto.click());
+  hwPhoto.addEventListener('change', async () => {
+    const f = hwPhoto.files?.[0];
+    if (!f) return;
+    hwPhotoStatus.textContent = 'Uploading...';
+    try{
+      uploadedKey = await uploadWithHandshake(homeworkApiBase, f);
+      hwPhotoStatus.textContent = 'Photo ready ✅';
+    }catch(e){
+      uploadedKey = null;
+      hwPhotoStatus.textContent = e.message;
+      hwPhotoStatus.classList.add('err');
+    }
+  });
+
+  btnSubmitHW.addEventListener('click', async () => {
+    try{
+      hwSubmitStatus.textContent = 'Saving...'; hwSubmitStatus.className='status';
+      const childId = studentSel.value;
+      const payload = {
+        who: (studentSel.options[studentSel.selectedIndex]?.text || studentSel.value),
+        child_id: childId,
+        date: new Date().toISOString().slice(0,10),
+        title: hwTitle.value || null,
+        notes: hwNotes.value || null,
+        photo_key: uploadedKey || null
+      };
+      await apiPOSTjson(homeworkApiBase, "/v1/homework/submit", payload);
+      hwSubmitStatus.textContent = 'Saved ✅'; hwSubmitStatus.classList.add('ok');
+      hwTitle.value=''; hwNotes.value=''; hwPhoto.value=''; uploadedKey=null; hwPhotoStatus.textContent='No photo yet';
+      await loadFeed();
+    }catch(e){
+      hwSubmitStatus.textContent = e.message; hwSubmitStatus.classList.add('err');
+    }
+  });
+
+  async function loadFeed(){
+    hwFeedStatus.textContent = 'Loading...'; hwFeedStatus.className='status';
+    try{
+      const items = await apiGET(homeworkApiBase, "/v1/homework/list?limit=100");
+      hwFeed.innerHTML='';
+      items.sort((a,b)=> (b.created_at||0) - (a.created_at||0));
+      items.forEach(it => {
+        const div = document.createElement('div');
+        div.className='item';
+        const img = document.createElement('img');
+        img.className='thumb';
+        if (it.photo_key) img.src = `${homeworkApiBase}/v1/photo?key=${encodeURIComponent(it.photo_key)}`;
+        else img.classList.add('hidden');
+
+        const meta = document.createElement('div'); meta.className='meta';
+        const kid = document.createElement('div'); kid.className='kid'; kid.textContent = (it.child_name || it.child_id || '');
+        const date = document.createElement('div'); date.className='date'; date.textContent = fmtHuman(it.created_at || it.date || '');
+        const text = document.createElement('div'); text.className='small';
+        const parts = [];
+        if (it.title) parts.push(it.title);
+        if (it.notes) parts.push('— ' + it.notes);
+        text.textContent = parts.join(', ');
+
+        // admin delete if ?admin=TOKEN present
+        const qs = new URLSearchParams(location.search);
+        const admin = qs.get(window.APP_CONFIG.adminTokenParam);
+        const actions = document.createElement('div');
+        if (admin) {
+          const del = document.createElement('button');
+          del.className='icon-btn'; del.title='Delete';
+          const i = document.createElement('i'); i.className='icon icon-trash'; del.appendChild(i);
+          del.addEventListener('click', async () => {
+            if (!confirm('Delete this homework?')) return;
+            try{
+              const r = await fetch(`${homeworkApiBase}/v1/homework/${encodeURIComponent(it.id)}?admin=${encodeURIComponent(admin)}`, { method:'DELETE' });
+              if (!r.ok) throw new Error(await r.text());
+              await loadFeed();
+            }catch(e){ alert('Delete failed: ' + e.message) }
+          });
+          actions.appendChild(del);
+        }
+
+        meta.appendChild(kid); meta.appendChild(date); meta.appendChild(text);
+        div.appendChild(img); div.appendChild(meta); if (actions.childNodes.length) div.appendChild(actions);
+        hwFeed.appendChild(div);
+      });
+      if (!items.length) hwFeed.innerHTML = '<div class="hint">No homework yet — submit one above.</div>';
+      hwFeedStatus.textContent='';
+    }catch(e){
+      hwFeedStatus.textContent = 'Failed to load feed.'; hwFeedStatus.classList.add('err');
+    }
+  }
+
+  loadFeed();
+});
+</script>
+</body>
+</html>

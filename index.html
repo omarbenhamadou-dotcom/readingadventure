@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reading • Family</title>
+  <link rel="stylesheet" href="./_shared.css"/>
+  <script defer src="./config.js"></script>
+  <script defer src="./_shared.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title">📚 Hello Babies :) What did you read today?</div>
+    <div class="nav">
+      <a href="./index.html">Reading</a>
+      <a href="./homework.html">Homework</a>
+      <a href="./parent.html">Parent</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="field">
+        <label>Reader</label>
+        <select id="reader"></select>
+      </div>
+      <div class="field">
+        <label>Pages read</label>
+        <input id="pages" type="number" min="0"/>
+      </div>
+      <div class="field">
+        <label>Book title</label>
+        <input id="title" type="text"/>
+      </div>
+      <div class="field">
+        <label>What did you learn today?</label>
+        <textarea id="notes"></textarea>
+      </div>
+      <div class="field">
+        <label>Take a picture of the book</label>
+        <input id="photo" class="hidden" type="file" accept="image/*" capture="environment"/>
+        <div class="row">
+          <button class="icon-btn" id="btnPhoto"><i class="icon icon-camera"></i></button>
+          <span id="photoStatus" class="hint">No photo yet</span>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="btnSubmit">Submit</button>
+      <div id="submitStatus" class="status"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div class="title" style="font-size:18px">🗂️ What we read before</div>
+      <div class="hint">Newest first</div>
+    </div>
+    <div id="feed" class="list"></div>
+    <div id="feedStatus" class="status"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const { readingApiBase, children } = window.APP_CONFIG;
+  const readerSel = document.getElementById('reader');
+  const pagesEl = document.getElementById('pages');
+  const titleEl = document.getElementById('title');
+  const notesEl = document.getElementById('notes');
+  const photoEl = document.getElementById('photo');
+  const btnPhoto = document.getElementById('btnPhoto');
+  const photoStatus = document.getElementById('photoStatus');
+  const btnSubmit = document.getElementById('btnSubmit');
+  const submitStatus = document.getElementById('submitStatus');
+  const feed = document.getElementById('feed');
+  const feedStatus = document.getElementById('feedStatus');
+
+  // populate dropdown
+  children.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.name;
+    readerSel.appendChild(opt);
+  });
+
+  let uploadedKey = null;
+
+  btnPhoto.addEventListener('click', () => photoEl.click());
+  photoEl.addEventListener('change', async () => {
+    const f = photoEl.files?.[0];
+    if (!f) return;
+    photoStatus.textContent = 'Uploading...';
+    try{
+      uploadedKey = await uploadWithHandshake(readingApiBase, f);
+      photoStatus.textContent = 'Photo ready ✅';
+    }catch(e){
+      uploadedKey = null;
+      photoStatus.textContent = e.message;
+      photoStatus.classList.add('err');
+    }
+  });
+
+  btnSubmit.addEventListener('click', async () => {
+    try{
+      submitStatus.textContent = 'Saving...'; submitStatus.className = 'status';
+      const childId = readerSel.value;
+      const payload = {
+        date: new Date().toISOString().slice(0,10),
+        pages: parseInt(pagesEl.value || '0', 10),
+        minutes: 0,
+        book_title: titleEl.value || null,
+        notes: notesEl.value || null,
+        photo_key: uploadedKey || null
+      };
+      if (!payload.pages && !payload.minutes) throw new Error('Enter pages read');
+      await apiPOSTjson(readingApiBase, `/v1/children/${encodeURIComponent(childId)}/entries`, payload);
+      submitStatus.textContent = 'Saved ✅'; submitStatus.classList.add('ok');
+      // clear minimal
+      pagesEl.value=''; titleEl.value=''; notesEl.value=''; uploadedKey=null; photoEl.value=''; photoStatus.textContent='No photo yet';
+      await loadFeed();
+    }catch(e){
+      submitStatus.textContent = e.message; submitStatus.classList.add('err');
+    }
+  });
+
+  async function loadFeed(){
+    feedStatus.textContent = 'Loading...'; feedStatus.className='status';
+    try{
+      const arrays = await Promise.all(children.map(c => apiGET(readingApiBase, `/v1/children/${encodeURIComponent(c.id)}/entries?limit=100`)));
+      const items = mergeEntries(arrays);
+      feed.innerHTML = '';
+      items.forEach(it => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        if (it.photo_key) img.src = `${window.APP_CONFIG.readingApiBase}/v1/photo?key=${encodeURIComponent(it.photo_key)}`;
+        else img.classList.add('hidden');
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const kid = document.createElement('div');
+        kid.className = 'kid'; kid.textContent = (it.child_name || '');
+        const date = document.createElement('div');
+        date.className = 'date'; date.textContent = fmtHuman(it.created_at || it.date || '');
+        const text = document.createElement('div');
+        text.className = 'small';
+        const parts = [];
+        if (it.book_title) parts.push(`“${it.book_title}”`);
+        if (typeof it.pages === 'number') parts.push(`${it.pages} pages`);
+        if (it.notes) parts.push(`— ${it.notes}`);
+        text.textContent = parts.join(', ');
+
+        // Admin delete button if ?admin=TOKEN present
+        const qs = new URLSearchParams(location.search);
+        const admin = qs.get(window.APP_CONFIG.adminTokenParam);
+        const actions = document.createElement('div');
+        if (admin) {
+          const del = document.createElement('button');
+          del.className='icon-btn'; del.title='Delete';
+          const i = document.createElement('i'); i.className='icon icon-trash'; del.appendChild(i);
+          del.addEventListener('click', async () => {
+            if (!confirm('Delete this entry?')) return;
+            try{
+              const r = await fetch(`${readingApiBase}/v1/entries/${encodeURIComponent(it.id)}?admin=${encodeURIComponent(admin)}`, { method:'DELETE' });
+              if (!r.ok) throw new Error(await r.text());
+              await loadFeed();
+            }catch(e){ alert('Delete failed: ' + e.message) }
+          });
+          actions.appendChild(del);
+        }
+
+        meta.appendChild(kid); meta.appendChild(date); meta.appendChild(text); 
+        div.appendChild(img); div.appendChild(meta); if (actions.childNodes.length) div.appendChild(actions);
+        feed.appendChild(div);
+      });
+      if (!items.length) {
+        feed.innerHTML = '<div class="hint">No reading yet — submit one above.</div>';
+      }
+      feedStatus.textContent = '';
+    }catch(e){
+      feedStatus.textContent = 'Failed to load feed.'; feedStatus.classList.add('err');
+    }
+  }
+
+  loadFeed();
+});
+</script>
+</body>
+</html>

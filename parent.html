@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Parent • Family</title>
+  <link rel="stylesheet" href="./_shared.css"/>
+  <script defer src="./config.js"></script>
+  <script defer src="./_shared.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title">👨‍👩‍👧 Parent</div>
+    <div class="nav">
+      <a href="./index.html">Reading</a>
+      <a href="./homework.html">Homework</a>
+      <a href="./parent.html">Parent</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title" style="font-size:18px">🏆 Leaderboard (this month)</div>
+    <div class="list" id="board"></div>
+    <div id="boardStatus" class="status"></div>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  const { readingApiBase, children } = window.APP_CONFIG;
+  const board = document.getElementById('board'); const boardStatus = document.getElementById('boardStatus');
+  const now = new Date(); const month = now.toISOString().slice(0,7);
+  boardStatus.textContent='Loading...';
+  try{
+    const rows = await apiGET(readingApiBase, `/v1/leaderboard?month=${encodeURIComponent(month)}`);
+    rows.forEach(r => {
+      const kidName = (children.find(c => c.id===r.id)?.name) || r.name || r.id;
+      const div = document.createElement('div'); div.className='item';
+      const meta = document.createElement('div'); meta.className='meta';
+      const k = document.createElement('div'); k.className='kid'; k.textContent = kidName;
+      const t = document.createElement('div'); t.className='small'; t.innerHTML = `<span class="badge">${r.pages||0} pages</span>`;
+      meta.appendChild(k); meta.appendChild(t); div.appendChild(meta); board.appendChild(div);
+    });
+    if (!rows.length) board.innerHTML = '<div class="hint">No data yet.</div>';
+    boardStatus.textContent='';
+  }catch(e){
+    boardStatus.textContent='Failed to load leaderboard.'; boardStatus.classList.add('err');
+  }
+});
+</script>
+</body>
+</html>
