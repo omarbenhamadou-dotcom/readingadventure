@@ -147,7 +147,8 @@ document.addEventListener('DOMContentLoaded', () => {
         text.className = 'small';
         const parts = [];
         if (it.book_title) parts.push(`“${it.book_title}”`);
-        if (typeof it.pages === 'number') parts.push(`${it.pages} pages`);
+        const pages = Number(it.pages ?? it.pages_read);
+        if (!Number.isNaN(pages) && pages > 0) parts.push(`${pages} pages`);
         if (it.notes) parts.push(`— ${it.notes}`);
         text.textContent = parts.join(', ');
 
