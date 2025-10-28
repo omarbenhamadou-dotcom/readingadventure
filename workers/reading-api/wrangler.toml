@@ -4,24 +4,20 @@ compatibility_date = "2024-05-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "REPLACE_WITH_DATABASE_NAME"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_name = "reading_goals"
+database_id = "134b7f1d-5ecc-4a29-a1e6-123a4fd9d80d"
 
 [[r2_buckets]]
 binding = "PHOTOS"
-bucket_name = "REPLACE_WITH_PROD_BUCKET"
-preview_bucket_name = "REPLACE_WITH_PREVIEW_BUCKET"
+bucket_name = "reading-photos"
+preview_bucket_name = "reading-photos"
 
 kv_namespaces = [
-  { binding = "AGG_KV", id = "REPLACE_WITH_PROD_AGG_KV_ID", preview_id = "REPLACE_WITH_PREVIEW_AGG_KV_ID" }
+  { binding = "AGG_KV", id = "e19b11b1e868415092f3345fdcc5831d", preview_id = "e19b11b1e868415092f3345fdcc5831d" }
 ]
 
 [vars]
-# Optional admin token if you want to gate deletes
-# ADMIN_TOKEN = "set-this-to-your-admin-token"
-
-[ai]
-binding = "AI"
+ADMIN_TOKEN = "bagelbar"
 
 [dev]
 port = 8788
