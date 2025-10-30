@@ -181,17 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const commentSection = document.createElement('div');
         commentSection.className = 'comment-section';
 
-        const commentHeaderRow = document.createElement('div');
-        commentHeaderRow.className = 'comment-header-row';
-        const commentHeaderTitle = document.createElement('div');
-        commentHeaderTitle.textContent = 'Comments';
-        const commentCountEl = document.createElement('span');
-        commentCountEl.className = 'hint';
-        commentCountEl.textContent = '0';
-        commentHeaderRow.appendChild(commentHeaderTitle);
-        commentHeaderRow.appendChild(commentCountEl);
-        commentSection.appendChild(commentHeaderRow);
-
         const commentList = document.createElement('div');
         commentList.className = 'comment-list';
         commentList.innerHTML = '<div class="hint">Loading comments...</div>';
@@ -229,12 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         meta.appendChild(date);
         meta.appendChild(text);
         meta.appendChild(interactions);
-
-        let commentCount = 0;
-        function updateCommentCount(){
-          commentCountEl.textContent = String(commentCount);
-        }
-        updateCommentCount();
 
         function normaliseLikeCount(res){
           if (typeof res === 'number' && Number.isFinite(res)) return res;
@@ -304,17 +287,14 @@ document.addEventListener('DOMContentLoaded', () => {
           try{
             const res = await apiGET(readingApiBase, `/v1/entries/${encodeURIComponent(it.id)}/comments`);
             const list = normaliseComments(res);
-            commentCount = list.length;
             if (!list.length){
               commentList.innerHTML = '<div class="hint">No comments yet.</div>';
-              updateCommentCount();
               return;
             }
             commentList.innerHTML = '';
             list.forEach(entryComment => {
               const name = entryComment.name || entryComment.author || entryComment.user || 'Anonymous';
               const message = entryComment.comment ?? entryComment.text ?? entryComment.notes ?? '';
-              const timestamp = entryComment.created_at || entryComment.updated_at || entryComment.date || null;
               const commentEl = document.createElement('div');
               commentEl.className = 'comment';
               const headerEl = document.createElement('div');
@@ -327,19 +307,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 bodyEl.textContent = message;
                 commentEl.appendChild(bodyEl);
               }
-              if (timestamp){
-                const dateEl = document.createElement('div');
-                dateEl.className = 'comment-date';
-                dateEl.textContent = fmtHuman(timestamp);
-                commentEl.appendChild(dateEl);
-              }
               commentList.appendChild(commentEl);
             });
-            updateCommentCount();
           }catch(e){
             commentList.innerHTML = '<div class="hint err">Comments unavailable.</div>';
-            commentCount = 0;
-            updateCommentCount();
           }
         }
 

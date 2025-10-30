@@ -82,13 +82,11 @@ textarea{min-height:100px;resize:vertical}
 .like-btn:active{transform:scale(.97)}
 .like-btn:disabled{opacity:0.5;cursor:not-allowed}
 .like-btn .icon{width:14px;height:14px}
-.comment-header-row{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600}
-.comment-section{display:flex;flex-direction:column;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.comment-section{display:flex;flex-direction:column;gap:8px;padding:8px 0}
 .comment-list{display:flex;flex-direction:column;gap:8px;max-height:200px;overflow:auto}
 .comment{font-size:12px;color:#333;padding:0}
 .comment-header{font-weight:600;font-size:12px}
 .comment-body{margin-top:3px;white-space:pre-wrap}
-.comment-date{font-size:11px;color:var(--muted);margin-top:2px}
 .comment-form{display:grid;grid-template-columns:1fr 240px;gap:8px;font-size:12px;align-items:flex-start}
 .comment-form textarea{grid-column:1/2;font-size:12px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;min-height:60px;resize:vertical}
 .comment-form .comment-side{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
