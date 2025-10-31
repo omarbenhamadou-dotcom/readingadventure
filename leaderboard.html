@@ -21,28 +21,28 @@
   </div>
 
   <div class="card">
-    <div class="title" style="font-size:18px">📅 Pages per reader each week</div>
-    <div id="weeklyBoard" class="dashboard-grid"></div>
-    <div id="weeklyStatus" class="status"></div>
+    <div class="title" style="font-size:18px">📈 Progress over the last 6 weeks</div>
+    <div id="chartBoard" class="dashboard-grid chart-grid"></div>
+    <div id="chartStatus" class="status"></div>
   </div>
 
   <div class="card">
-    <div class="title" style="font-size:18px">📚 Most-read titles</div>
-    <div id="titleBoard" class="dashboard-grid"></div>
-    <div id="titleStatus" class="status"></div>
+    <div class="title" style="font-size:18px">📅 Pages per reader each week</div>
+    <div id="weeklyBoard" class="dashboard-grid"></div>
+    <div id="weeklyStatus" class="status"></div>
   </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
   const { readingApiBase, children } = window.APP_CONFIG;
+  const chartBoard = document.getElementById('chartBoard');
+  const chartStatus = document.getElementById('chartStatus');
   const weeklyBoard = document.getElementById('weeklyBoard');
   const weeklyStatus = document.getElementById('weeklyStatus');
-  const titleBoard = document.getElementById('titleBoard');
-  const titleStatus = document.getElementById('titleStatus');
 
+  chartStatus.textContent = 'Loading...';
   weeklyStatus.textContent = 'Loading...';
-  titleStatus.textContent = 'Loading...';
 
   try{
     const perChild = await Promise.all(children.map(async child => {
@@ -51,22 +51,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     }));
     const entries = perChild.flat();
 
+    renderChildCharts(entries, children, chartBoard);
     renderWeeklyBoard(entries, children, weeklyBoard);
-    renderTitleBoard(entries, titleBoard);
 
+    if (!chartBoard.childElementCount) chartBoard.innerHTML = '<div class="hint">No reading activity yet.</div>';
     if (!weeklyBoard.childElementCount) weeklyBoard.innerHTML = '<div class="hint">No reading activity yet.</div>';
-    if (!titleBoard.childElementCount) titleBoard.innerHTML = '<div class="hint">No book titles to show yet.</div>';
 
+    chartStatus.textContent = '';
     weeklyStatus.textContent = '';
-    titleStatus.textContent = '';
   }catch(e){
     const message = e?.message || 'Failed to load data.';
+    chartStatus.textContent = message;
+    chartStatus.classList.add('err');
     weeklyStatus.textContent = message;
     weeklyStatus.classList.add('err');
-    titleStatus.textContent = message;
-    titleStatus.classList.add('err');
   }
 });
+
+function renderChildCharts(entries, children, container){
+  const weeks = getRecentWeekStarts(6);
+  const weekLabels = weeks.map(formatWeekShort);
+
+  children.forEach(child => {
+    const totals = weeks.map(() => 0);
+    entries.forEach(entry => {
+      if ((entry.child_id || child.id) !== child.id) return;
+      const date = normaliseDate(entry);
+      if (!date) return;
+      const week = getWeekStart(date);
+      const idx = weeks.indexOf(week);
+      if (idx === -1) return;
+      const pages = normalisePages(entry);
+      totals[idx] += pages;
+    });
+
+    const maxPages = Math.max(...totals, 0);
+    const chart = document.createElement('div');
+    chart.className = 'stat-card chart-card';
+
+    const header = document.createElement('div');
+    header.className = 'stat-title';
+    header.textContent = child.name;
+    chart.appendChild(header);
+
+    const bars = document.createElement('div');
+    bars.className = 'chart-bars';
+
+    totals.forEach((value, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'chart-bar-wrapper';
+
+      const valueLabel = document.createElement('div');
+      valueLabel.className = 'chart-value';
+      valueLabel.textContent = value ? `${value} pages` : '';
+      wrapper.appendChild(valueLabel);
+
+      const bar = document.createElement('div');
+      bar.className = 'chart-bar';
+      const maxHeight = 120;
+      const height = maxPages > 0 ? Math.round((value / maxPages) * maxHeight) : 0;
+      bar.style.height = `${Math.max(value > 0 ? height : 4, 4)}px`;
+      bar.classList.toggle('empty', value === 0);
+      wrapper.appendChild(bar);
+
+      const weekLabel = document.createElement('div');
+      weekLabel.className = 'chart-week';
+      weekLabel.textContent = weekLabels[idx];
+      wrapper.appendChild(weekLabel);
+
+      bars.appendChild(wrapper);
+    });
+
+    chart.appendChild(bars);
+    container.appendChild(chart);
+  });
+}
 
 function renderWeeklyBoard(entries, children, container){
   const weekly = new Map();
@@ -125,53 +184,6 @@ function renderWeeklyBoard(entries, children, container){
   });
 }
 
-function renderTitleBoard(entries, container){
-  const titleTotals = new Map();
-  entries.forEach(entry => {
-    const title = normaliseTitle(entry);
-    if (!title) return;
-    const pages = normalisePages(entry);
-    const stats = titleTotals.get(title) || { pages: 0, count: 0 };
-    stats.pages += pages;
-    stats.count += 1;
-    titleTotals.set(title, stats);
-  });
-
-  const topTitles = Array.from(titleTotals.entries())
-    .map(([title, stats]) => ({ title, pages: stats.pages, count: stats.count }))
-    .filter(t => t.pages > 0 || t.count > 0)
-    .sort((a,b) => b.pages - a.pages || b.count - a.count || a.title.localeCompare(b.title))
-    .slice(0, 8);
-
-  if (!topTitles.length) return;
-
-  const card = document.createElement('div');
-  card.className = 'stat-card';
-  const header = document.createElement('div');
-  header.className = 'stat-title';
-  header.textContent = 'Top books';
-  card.appendChild(header);
-
-  const list = document.createElement('div');
-  list.className = 'stat-list';
-
-  topTitles.forEach((entry, index) => {
-    const item = document.createElement('div');
-    item.className = 'stat-row';
-    const name = document.createElement('span');
-    name.textContent = `${index + 1}. ${entry.title}`;
-    const value = document.createElement('span');
-    value.className = 'stat-value';
-    value.textContent = `${entry.pages} pages • ${entry.count} entries`;
-    item.appendChild(name);
-    item.appendChild(value);
-    list.appendChild(item);
-  });
-
-  card.appendChild(list);
-  container.appendChild(card);
-}
-
 function normaliseDate(entry){
   if (entry.date && /^\d{4}-\d{2}-\d{2}$/.test(entry.date)) return entry.date;
   if (entry.created_at) {
@@ -187,11 +199,6 @@ function normalisePages(entry){
   return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
 }
 
-function normaliseTitle(entry){
-  const title = entry.book_title || entry.title || '';
-  return typeof title === 'string' ? title.trim() : '';
-}
-
 function getWeekStart(dateStr){
   const [Y,M,D] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(Y, M - 1, D));
@@ -201,6 +208,18 @@ function getWeekStart(dateStr){
   return dt.toISOString().slice(0,10);
 }
 
+function getRecentWeekStarts(count){
+  const today = new Date();
+  const todayYMD = today.toISOString().slice(0,10);
+  let cursor = new Date(getWeekStart(todayYMD) + 'T00:00:00Z');
+  const out = [];
+  for (let i = 0; i < count; i++){
+    out.push(cursor.toISOString().slice(0,10));
+    cursor.setUTCDate(cursor.getUTCDate() - 7);
+  }
+  return out.reverse();
+}
+
 function formatWeekLabel(weekStart){
   const start = new Date(weekStart + 'T00:00:00Z');
   const end = new Date(start);
@@ -208,6 +227,11 @@ function formatWeekLabel(weekStart){
   const startLabel = start.toLocaleDateString(undefined, { month:'short', day:'numeric' });
   const endLabel = end.toLocaleDateString(undefined, { month:'short', day:'numeric' });
   return `Week of ${startLabel} – ${endLabel}`;
+}
+
+function formatWeekShort(weekStart){
+  const start = new Date(weekStart + 'T00:00:00Z');
+  return start.toLocaleDateString(undefined, { month:'short', day:'numeric' });
 }
 </script>
 </body>

@@ -167,11 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const kid = document.createElement('div');
         kid.className = 'kid';
         const bookLabel = it.book_title ? it.book_title : '';
-        const headerParts = [];
-        if (childName) headerParts.push(childName);
-        if (!Number.isNaN(pagesForEntry) && pagesForEntry > 0) headerParts.push(`${pagesForEntry} pages`);
-        if (bookLabel) headerParts.push(bookLabel);
-        kid.textContent = headerParts.join(' - ') || bookLabel || childName || 'Reader';
+        kid.textContent = bookLabel || 'Untitled book';
         headerRow.appendChild(kid);
         const date = document.createElement('div');
         date.className = 'date'; date.textContent = fmtHuman(it.created_at || it.date || '');

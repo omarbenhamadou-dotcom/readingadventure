@@ -86,7 +86,15 @@ a{color:var(--accent);text-decoration:none}
 }
 .nav a:hover{transform:translateY(-1px);box-shadow:0 16px 28px rgba(143,88,194,.24);filter:brightness(1.05)}
 .nav a:active{transform:scale(.97)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:22px;margin:16px 0;box-shadow:var(--shadow)}
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:22px;
+  margin:16px auto;
+  box-shadow:var(--shadow);
+  width:min(100%, 780px);
+}
 .grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}
 @media (max-width: 720px){.grid{grid-template-columns:1fr}}
 .field{display:flex;flex-direction:column;gap:6px}
@@ -245,6 +253,7 @@ textarea{min-height:100px;resize:vertical}
   margin-top:18px;
   grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
 }
+.chart-grid{grid-template-columns:repeat(auto-fit, minmax(260px, 1fr))}
 .stat-card{
   background:rgba(255,255,255,.9);
   border:1px solid rgba(143,88,194,.18);
@@ -278,6 +287,44 @@ textarea{min-height:100px;resize:vertical}
   font-weight:700;
   color:#19c3c3;
   white-space:nowrap;
+}
+.chart-card{gap:16px}
+.chart-bars{
+  display:flex;
+  align-items:flex-end;
+  gap:12px;
+  height:160px;
+}
+.chart-bar-wrapper{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+}
+.chart-value{
+  min-height:20px;
+  font-weight:700;
+  color:#331b44;
+  font-size:13px;
+}
+.chart-bar{
+  width:100%;
+  border-radius:16px 16px 12px 12px;
+  background:linear-gradient(160deg, rgba(255,255,255,.95) 0%, rgba(25,195,195,.7) 100%);
+  box-shadow:0 12px 20px rgba(25,195,195,.18);
+  transition:height .25s ease;
+}
+.chart-bar.empty{
+  background:rgba(255,255,255,.7);
+  border:1px dashed rgba(143,88,194,.25);
+  box-shadow:none;
+}
+.chart-week{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.06em;
 }
 .page-badge{
   display:flex;
@@ -363,8 +410,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:8px 0}
 
 @media (max-width:640px){
   .wrap{padding:16px}
-  .card{padding:18px;margin:12px 0}
+  .card{padding:18px;margin:12px auto;width:100%}
   .dashboard-grid{grid-template-columns:1fr;margin-top:12px}
+  .chart-bars{height:140px}
   .item{flex-direction:column;align-items:stretch;gap:18px}
   .page-badge{
     width:100%;
