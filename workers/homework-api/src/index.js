@@ -16,6 +16,95 @@ const json = (o,s=200)=>withCORS(new Response(JSON.stringify(o),{status:s,header
 const bad  = (m,s=400)=>json({error:m},s);
 const uid  = ()=>crypto.randomUUID();
 
+function evaluateMathNotes(text=''){
+  if (typeof text !== 'string' || !text.trim()) return [];
+  const cleaned = text.replace(/,/g,'');
+  const rx = /(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/g;
+  const out = [];
+  let match;
+  const maxExpressions = 10;
+  while ((match = rx.exec(cleaned)) && out.length < maxExpressions) {
+    const left = Number(match[1]);
+    const operator = match[2];
+    const right = Number(match[3]);
+    const provided = Number(match[4]);
+    if (![left, right, provided].every(n => Number.isFinite(n))) continue;
+    let expected;
+    switch (operator) {
+      case '+': expected = left + right; break;
+      case '-': expected = left - right; break;
+      case '*':
+      case '×': expected = left * right; break;
+      case '/':
+      case '÷':
+        expected = right === 0 ? null : left / right;
+        break;
+      default: expected = null;
+    }
+    if (expected === null) continue;
+    const tolerance = 1e-6;
+    const correct = Math.abs(provided - expected) <= tolerance;
+    out.push({
+      expression: match[0],
+      left,
+      operator,
+      right,
+      provided,
+      expected: Number.isFinite(expected) ? Number(Number(expected.toFixed(6))) : expected,
+      correct,
+      difference: Number.isFinite(expected) ? Number((provided - expected).toFixed(6)) : null
+    });
+  }
+  return out;
+}
+
+function summariseMathFindings(findings){
+  if (!findings || !findings.length) return 'No math expressions detected.';
+  const parts = findings.map(f => {
+    if (f.correct) return `${f.expression} looks correct ✅`;
+    if (Number.isFinite(f.expected)) return `${f.expression} should be ${f.expected}`;
+    return `${f.expression} needs a closer look`;
+  });
+  return parts.join(' | ');
+}
+
+function normaliseAIText(res){
+  if (!res) return '';
+  if (typeof res === 'string') return res;
+  if (typeof res === 'object') {
+    return res.response || res.result || res.output || res.text || '';
+  }
+  return '';
+}
+
+async function analyzePhotoWithAI(env, photoKey){
+  if (!photoKey) return { status:'skipped', reason:'no photo provided' };
+  if (!env.PHOTOS) return { status:'unavailable', reason:'PHOTOS binding missing' };
+  const obj = await env.PHOTOS.get(photoKey);
+  if (!obj) return { status:'unavailable', reason:'photo not found in bucket' };
+  if (!env.AI) return { status:'unavailable', reason:'AI binding missing' };
+  const model = env.AI_VISION_MODEL;
+  if (!model) {
+    return { status:'skipped', reason:'AI_VISION_MODEL not configured' };
+  }
+  const mime = obj.httpMetadata?.contentType || 'image/jpeg';
+  const sizeLimit = 2_500_000; // ~2.5 MB guardrail for vision models
+  const buf = await obj.arrayBuffer();
+  if (buf.byteLength > sizeLimit) {
+    return { status:'unavailable', reason:`photo is ${buf.byteLength} bytes; reduce below ${sizeLimit}` };
+  }
+  try{
+    const response = await env.AI.run(model, {
+      prompt: 'Describe the homework photo, focusing on the subject matter and whether the visible work is complete or correct. Be concise.',
+      image: [{ data: buf, mime_type: mime }]
+    });
+    const summary = normaliseAIText(response) || (typeof response === 'object' ? JSON.stringify(response) : '');
+    return { status:'ok', summary, model };
+  }catch(e){
+    return { status:'error', reason: e?.message || String(e), model };
+  }
+}
+
 async function tableInfo(DB, name){
   const r = await DB.prepare(`PRAGMA table_info(${name})`).all();
   return (r?.results||[]).map(c=>({name:c.name,type:c.type,notnull:c.notnull,pk:c.pk,default:c.dflt_value}));
@@ -225,19 +314,55 @@ export default {
       }
 
       if (path === '/v1/homework/analyze' && method === 'POST') {
-        if (!env.AI) return bad('Workers AI binding missing', 500);
         const body = await req.json().catch(()=>({}));
-        const { notes, photo_key, child_name } = body;
-        if (!photo_key) return bad('photo_key required');
+        const notes = typeof body.notes === 'string' ? body.notes : String(body.notes ?? '');
+        const photoKey = typeof body.photo_key === 'string' ? body.photo_key : '';
+        const childName = typeof body.child_name === 'string' ? body.child_name : '';
+        const title = typeof body.title === 'string' ? body.title : '';
 
-        const encouragement = await env.AI.run("@cf/mistral/mistral-7b-instruct", {
-          prompt: `You are a kind teacher. A child named ${child_name || 'the student'} just submitted homework.
-The child wrote: "${notes}". Write a short, warm, positive message praising their effort and suggesting one improvement.`
-        });
+        const mathFindings = evaluateMathNotes(notes);
+        const mathSummary = summariseMathFindings(mathFindings);
+        let photoResult;
+        try{
+          photoResult = await analyzePhotoWithAI(env, photoKey);
+        }catch(err){
+          photoResult = { status:'error', reason: err?.message || String(err) };
+        }
+
+        const promptLines = [
+          'You are a kind, encouraging teacher writing directly to the student in the second person.',
+          childName ? `Student name: ${childName}` : 'Student name not supplied.',
+          title ? `Homework title: ${title}` : 'No specific homework title provided.',
+          notes ? `Student notes: ${notes}` : 'The student did not provide written notes.',
+          mathFindings.length ? `Math assessment summary: ${mathSummary}` : 'No math expressions were detected to check.',
+          (photoResult && photoResult.status === 'ok' && photoResult.summary) ? `Photo observations: ${photoResult.summary}` : ''
+        ].filter(Boolean);
+
+        let feedbackText = '';
+        if (env.AI) {
+          const encourageModel = env.AI_ENCOURAGE_MODEL || "@cf/mistral/mistral-7b-instruct";
+          try{
+            const response = await env.AI.run(encourageModel, {
+              prompt: `${promptLines.join('\n')}\n\nWrite 2-3 sentences that praise the effort, highlight one improvement tip, and mention any math or photo observations when available.`
+            });
+            feedbackText = normaliseAIText(response);
+          }catch(e){
+            feedbackText = '';
+          }
+        }
+        if (!feedbackText) {
+          feedbackText = childName
+            ? `Great effort, ${childName}! Keep practicing and remember to double-check your answers.`
+            : 'Great effort! Keep practicing and remember to double-check your answers.';
+        }
 
         return json({
           ok: true,
-          feedback: encouragement?.response || "Great job!"
+          feedback: feedbackText,
+          math: mathFindings,
+          math_summary: mathSummary,
+          photo: photoResult,
+          photo_summary: photoResult?.summary
         });
       }
 

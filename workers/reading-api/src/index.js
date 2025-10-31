@@ -31,6 +31,22 @@ const json = (obj, status = 200) =>
 const bad = (m, s = 400) => json({ error: m }, s);
 const uid = () => crypto.randomUUID();
 
+async function ensureEngagementTables(DB) {
+  await DB.batch([
+    DB.prepare(`CREATE TABLE IF NOT EXISTS reading_comment (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      comment TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`),
+    DB.prepare(`CREATE TABLE IF NOT EXISTS reading_like (
+      entry_id TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0
+    )`)
+  ]);
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === 'OPTIONS') return withCORS(new Response(null, { status: 204 }));
@@ -73,6 +89,7 @@ export default {
           deleted_at INTEGER
         )`)
       ]);
+      await ensureEngagementTables(env.DB);
 
       await env.DB.batch([
         env.DB.prepare(`INSERT OR IGNORE INTO child (id, household_id, name, primary_unit, created_at, updated_at)
@@ -274,6 +291,69 @@ export default {
 
         if (env.AGG_KV) await env.AGG_KV.delete(`stats:${row.child_id}:30d`);
         return json({ ok: true });
+      }
+    }
+
+    {
+      const m = path.match(/^\/v1\/entries\/([^/]+)\/likes$/);
+      if (m && method === 'GET') {
+        if (!env.DB) return bad('D1 binding DB not configured', 500);
+        await ensureEngagementTables(env.DB);
+        const entryId = m[1];
+        const row = await env.DB.prepare(
+          `SELECT count FROM reading_like WHERE entry_id = ?`
+        ).bind(entryId).first();
+        const rawCount = row?.count;
+        const count = typeof rawCount === 'number' && Number.isFinite(rawCount) ? rawCount : Number(rawCount) || 0;
+        return json({ count });
+      }
+      if (m && method === 'POST') {
+        if (!env.DB) return bad('D1 binding DB not configured', 500);
+        await ensureEngagementTables(env.DB);
+        const entryId = m[1];
+        await env.DB.prepare(
+          `INSERT INTO reading_like (entry_id, count) VALUES (?, 1)
+           ON CONFLICT(entry_id) DO UPDATE SET count = count + 1`
+        ).bind(entryId).run();
+        const row = await env.DB.prepare(
+          `SELECT count FROM reading_like WHERE entry_id = ?`
+        ).bind(entryId).first();
+        const rawCount = row?.count;
+        const count = typeof rawCount === 'number' && Number.isFinite(rawCount) ? rawCount : Number(rawCount) || 0;
+        return json({ count });
+      }
+    }
+
+    {
+      const m = path.match(/^\/v1\/entries\/([^/]+)\/comments$/);
+      if (m && method === 'GET') {
+        if (!env.DB) return bad('D1 binding DB not configured', 500);
+        await ensureEngagementTables(env.DB);
+        const entryId = m[1];
+        const rows = await env.DB.prepare(
+          `SELECT id, entry_id, name, comment, created_at
+             FROM reading_comment
+            WHERE entry_id = ?
+            ORDER BY created_at DESC`
+        ).bind(entryId).all();
+        return json(rows.results || []);
+      }
+      if (m && method === 'POST') {
+        if (!env.DB) return bad('D1 binding DB not configured', 500);
+        await ensureEngagementTables(env.DB);
+        const entryId = m[1];
+        const payload = await req.json().catch(() => ({}));
+        const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+        const comment = typeof payload.comment === 'string' ? payload.comment.trim() : '';
+        if (!name) return bad('name required');
+        if (!comment) return bad('comment required');
+        const now = Date.now();
+        const commentId = uid();
+        await env.DB.prepare(
+          `INSERT INTO reading_comment (id, entry_id, name, comment, created_at)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(commentId, entryId, name, comment, now).run();
+        return json({ id: commentId, entry_id: entryId, name, comment, created_at: now });
       }
     }
 

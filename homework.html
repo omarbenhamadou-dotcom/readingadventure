@@ -16,6 +16,7 @@
       <a href="./index.html">Reading</a>
       <a href="./homework.html">Homework</a>
       <a href="./parent.html">Parent</a>
+      <a href="./leaderboard.html">Leaderboard</a>
     </div>
   </div>
 
@@ -46,6 +47,7 @@
       <button class="btn" id="btnSubmitHW">Submit</button>
       <div id="hwSubmitStatus" class="status"></div>
     </div>
+    <div id="hwAIStatus" class="status"></div>
   </div>
 
   <div class="card">
@@ -69,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const hwPhotoStatus = document.getElementById('hwPhotoStatus');
   const btnSubmitHW = document.getElementById('btnSubmitHW');
   const hwSubmitStatus = document.getElementById('hwSubmitStatus');
+  const hwAIStatus = document.getElementById('hwAIStatus');
   const hwFeed = document.getElementById('hwFeed');
   const hwFeedStatus = document.getElementById('hwFeedStatus');
 
@@ -96,8 +99,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   btnSubmitHW.addEventListener('click', async () => {
+    hwSubmitStatus.textContent = '';
+    hwSubmitStatus.className='status';
+    hwAIStatus.textContent = '';
+    hwAIStatus.className='status';
     try{
-      hwSubmitStatus.textContent = 'Saving...'; hwSubmitStatus.className='status';
+      hwSubmitStatus.textContent = 'Saving...';
       const childId = studentSel.value;
       const payload = {
         who: (studentSel.options[studentSel.selectedIndex]?.text || studentSel.value),
@@ -109,12 +116,68 @@ document.addEventListener('DOMContentLoaded', () => {
       };
       await apiPOSTjson(homeworkApiBase, "/v1/homework/submit", payload);
       hwSubmitStatus.textContent = 'Saved ✅'; hwSubmitStatus.classList.add('ok');
+      await runAnalysis(payload);
       hwTitle.value=''; hwNotes.value=''; hwPhoto.value=''; uploadedKey=null; hwPhotoStatus.textContent='No photo yet';
       await loadFeed();
     }catch(e){
       hwSubmitStatus.textContent = e.message; hwSubmitStatus.classList.add('err');
+      if (!hwAIStatus.textContent) {
+        hwAIStatus.textContent = 'AI analysis not available.';
+        hwAIStatus.classList.add('err');
+      }
     }
   });
+
+  function formatMathFindings(list){
+    if (!Array.isArray(list) || !list.length) return '';
+    const details = list.slice(0,3).map(item => {
+      const expr = item.expression || `${item.left ?? '?'} ${item.operator ?? '?'} ${item.right ?? '?'} = ${item.provided ?? '?'}`;
+      return item.correct ? `${expr} ✅` : `${expr} (expected ${item.expected})`;
+    });
+    const suffix = list.length > 3 ? ` +${list.length - 3} more` : '';
+    return `Math check: ${details.join('; ')}${suffix}`;
+  }
+
+  function describePhotoResult(photo, summary){
+    if (summary) return `Photo: ${summary}`;
+    if (!photo) return '';
+    if (photo.status === 'ok' && photo.summary) return `Photo: ${photo.summary}`;
+    if (photo.status === 'skipped') return '';
+    if (photo.status === 'unavailable' && photo.reason) return `Photo check skipped (${photo.reason}).`;
+    if (photo.status === 'error' && photo.reason) return `Photo check error (${photo.reason}).`;
+    return '';
+  }
+
+  async function runAnalysis(payload){
+    const notes = typeof payload.notes === 'string' ? payload.notes : (payload.notes ?? '');
+    const hasContent = notes.trim() !== '' || !!payload.photo_key;
+    if (!hasContent) {
+      hwAIStatus.textContent = '';
+      hwAIStatus.className = 'status';
+      return;
+    }
+    hwAIStatus.textContent = 'Asking AI for feedback...';
+    hwAIStatus.className = 'status';
+    try{
+      const res = await apiPOSTjson(homeworkApiBase, "/v1/homework/analyze", {
+        child_name: payload.who,
+        notes: notes,
+        photo_key: payload.photo_key,
+        title: payload.title
+      });
+      const bits = [];
+      if (res.feedback) bits.push(res.feedback);
+      const mathLine = res.math_summary || formatMathFindings(res.math);
+      if (mathLine) bits.push(mathLine);
+      const photoLine = describePhotoResult(res.photo, res.photo_summary);
+      if (photoLine) bits.push(photoLine);
+      hwAIStatus.textContent = bits.join(' | ') || 'AI review complete.';
+      hwAIStatus.className = 'status ok';
+    }catch(e){
+      hwAIStatus.textContent = e.message || 'AI analysis unavailable.';
+      hwAIStatus.className = 'status err';
+    }
+  }
 
   async function loadFeed(){
     hwFeedStatus.textContent = 'Loading...'; hwFeedStatus.className='status';
