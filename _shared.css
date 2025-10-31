@@ -237,6 +237,48 @@ textarea{min-height:100px;resize:vertical}
 .status.ok{color:#0a7f42}.status.err{color:#c02e2e}
 .list{display:flex;flex-direction:column;gap:10px}
 .item{display:flex;gap:12px;border:1px solid rgba(122, 80, 189, .12);border-radius:18px;padding:16px;background:#ffffffcf;backdrop-filter:blur(4px);align-items:flex-start}
+.feed-card .list{margin-top:14px}
+.feed-card .item{align-self:stretch}
+.dashboard-grid{
+  display:grid;
+  gap:16px;
+  margin-top:18px;
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+}
+.stat-card{
+  background:rgba(255,255,255,.9);
+  border:1px solid rgba(143,88,194,.18);
+  border-radius:18px;
+  padding:16px 18px;
+  box-shadow:0 12px 24px rgba(122, 80, 189, .16);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.stat-title{
+  font-size:16px;
+  font-weight:700;
+  color:#3a1f4b;
+}
+.stat-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.stat-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:6px 0;
+  border-bottom:1px dashed rgba(143,88,194,.15);
+}
+.stat-row:last-child{border-bottom:0}
+.stat-value{
+  font-weight:700;
+  color:#19c3c3;
+  white-space:nowrap;
+}
 .page-badge{
   display:flex;
   flex-direction:column;
@@ -318,3 +360,26 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:8px 0}
 .icon-btn.photo-btn:hover{transform:translateY(-1px);box-shadow:0 16px 28px rgba(25,195,195,.34)}
 .icon-btn.photo-btn:active{transform:scale(.97)}
 .hidden{display:none}
+
+@media (max-width:640px){
+  .wrap{padding:16px}
+  .card{padding:18px;margin:12px 0}
+  .dashboard-grid{grid-template-columns:1fr;margin-top:12px}
+  .item{flex-direction:column;align-items:stretch;gap:18px}
+  .page-badge{
+    width:100%;
+    min-width:0;
+    height:auto;
+    padding:16px 12px;
+    margin:0;
+  }
+  .page-count{font-size:44px}
+  .thumb-large{width:100%;height:200px}
+  .entry-header{flex-direction:column;align-items:flex-start;gap:6px}
+  .entry-header .date{margin-left:0;text-align:left}
+  .comment-form{grid-template-columns:1fr;gap:10px}
+  .comment-form textarea{grid-column:1/2}
+  .comment-form .comment-side{width:100%}
+  .comment-form .comment-side input,
+  .comment-form .comment-side .btn{width:100%}
+}

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Leaderboard • Family</title>
+  <link rel="stylesheet" href="./_shared.css"/>
+  <script defer src="./config.js"></script>
+  <script defer src="./_shared.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title"><span class="title-main">📊 Leaderboard</span><span class="title-sub">See who’s reading</span></div>
+    <div class="nav">
+      <a href="./index.html">Reading</a>
+      <a href="./homework.html">Homework</a>
+      <a href="./parent.html">Parent</a>
+      <a href="./leaderboard.html">Leaderboard</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title" style="font-size:18px">📅 Pages per reader each week</div>
+    <div id="weeklyBoard" class="dashboard-grid"></div>
+    <div id="weeklyStatus" class="status"></div>
+  </div>
+
+  <div class="card">
+    <div class="title" style="font-size:18px">📚 Most-read titles</div>
+    <div id="titleBoard" class="dashboard-grid"></div>
+    <div id="titleStatus" class="status"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  const { readingApiBase, children } = window.APP_CONFIG;
+  const weeklyBoard = document.getElementById('weeklyBoard');
+  const weeklyStatus = document.getElementById('weeklyStatus');
+  const titleBoard = document.getElementById('titleBoard');
+  const titleStatus = document.getElementById('titleStatus');
+
+  weeklyStatus.textContent = 'Loading...';
+  titleStatus.textContent = 'Loading...';
+
+  try{
+    const perChild = await Promise.all(children.map(async child => {
+      const entries = await apiGET(readingApiBase, `/v1/children/${encodeURIComponent(child.id)}/entries?limit=200`);
+      return entries.map(entry => ({ ...entry, child_id: entry.child_id || child.id }));
+    }));
+    const entries = perChild.flat();
+
+    renderWeeklyBoard(entries, children, weeklyBoard);
+    renderTitleBoard(entries, titleBoard);
+
+    if (!weeklyBoard.childElementCount) weeklyBoard.innerHTML = '<div class="hint">No reading activity yet.</div>';
+    if (!titleBoard.childElementCount) titleBoard.innerHTML = '<div class="hint">No book titles to show yet.</div>';
+
+    weeklyStatus.textContent = '';
+    titleStatus.textContent = '';
+  }catch(e){
+    const message = e?.message || 'Failed to load data.';
+    weeklyStatus.textContent = message;
+    weeklyStatus.classList.add('err');
+    titleStatus.textContent = message;
+    titleStatus.classList.add('err');
+  }
+});
+
+function renderWeeklyBoard(entries, children, container){
+  const weekly = new Map();
+  entries.forEach(entry => {
+    const date = normaliseDate(entry);
+    if (!date) return;
+    const pages = normalisePages(entry);
+    if (!pages) return;
+    const weekStart = getWeekStart(date);
+    if (!weekly.has(weekStart)) weekly.set(weekStart, new Map());
+    const map = weekly.get(weekStart);
+    const childId = entry.child_id;
+    map.set(childId, (map.get(childId) || 0) + pages);
+  });
+
+  const orderedWeeks = Array.from(weekly.keys()).sort((a,b) => b.localeCompare(a)).slice(0, 6);
+  orderedWeeks.forEach(week => {
+    const totals = weekly.get(week);
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    const header = document.createElement('div');
+    header.className = 'stat-title';
+    header.textContent = formatWeekLabel(week);
+    card.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'stat-list';
+    const rows = children.map(child => ({
+      id: child.id,
+      name: child.name,
+      pages: totals.get(child.id) || 0
+    })).filter(row => row.pages > 0)
+      .sort((a,b) => b.pages - a.pages || a.name.localeCompare(b.name));
+
+    if (!rows.length){
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = 'No pages this week.';
+      list.appendChild(empty);
+    }else{
+      rows.forEach(row => {
+        const item = document.createElement('div');
+        item.className = 'stat-row';
+        const name = document.createElement('span');
+        name.textContent = row.name;
+        const value = document.createElement('span');
+        value.className = 'stat-value';
+        value.textContent = `${row.pages} pages`;
+        item.appendChild(name);
+        item.appendChild(value);
+        list.appendChild(item);
+      });
+    }
+    card.appendChild(list);
+    container.appendChild(card);
+  });
+}
+
+function renderTitleBoard(entries, container){
+  const titleTotals = new Map();
+  entries.forEach(entry => {
+    const title = normaliseTitle(entry);
+    if (!title) return;
+    const pages = normalisePages(entry);
+    const stats = titleTotals.get(title) || { pages: 0, count: 0 };
+    stats.pages += pages;
+    stats.count += 1;
+    titleTotals.set(title, stats);
+  });
+
+  const topTitles = Array.from(titleTotals.entries())
+    .map(([title, stats]) => ({ title, pages: stats.pages, count: stats.count }))
+    .filter(t => t.pages > 0 || t.count > 0)
+    .sort((a,b) => b.pages - a.pages || b.count - a.count || a.title.localeCompare(b.title))
+    .slice(0, 8);
+
+  if (!topTitles.length) return;
+
+  const card = document.createElement('div');
+  card.className = 'stat-card';
+  const header = document.createElement('div');
+  header.className = 'stat-title';
+  header.textContent = 'Top books';
+  card.appendChild(header);
+
+  const list = document.createElement('div');
+  list.className = 'stat-list';
+
+  topTitles.forEach((entry, index) => {
+    const item = document.createElement('div');
+    item.className = 'stat-row';
+    const name = document.createElement('span');
+    name.textContent = `${index + 1}. ${entry.title}`;
+    const value = document.createElement('span');
+    value.className = 'stat-value';
+    value.textContent = `${entry.pages} pages • ${entry.count} entries`;
+    item.appendChild(name);
+    item.appendChild(value);
+    list.appendChild(item);
+  });
+
+  card.appendChild(list);
+  container.appendChild(card);
+}
+
+function normaliseDate(entry){
+  if (entry.date && /^\d{4}-\d{2}-\d{2}$/.test(entry.date)) return entry.date;
+  if (entry.created_at) {
+    const ms = Number(entry.created_at);
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString().slice(0,10);
+  }
+  return null;
+}
+
+function normalisePages(entry){
+  const raw = entry.pages ?? entry.pages_read ?? 0;
+  const num = Number(raw);
+  return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
+}
+
+function normaliseTitle(entry){
+  const title = entry.book_title || entry.title || '';
+  return typeof title === 'string' ? title.trim() : '';
+}
+
+function getWeekStart(dateStr){
+  const [Y,M,D] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(Y, M - 1, D));
+  const day = dt.getUTCDay(); // 0 (Sun) - 6 (Sat)
+  const diff = (day + 6) % 7; // days since Monday
+  dt.setUTCDate(dt.getUTCDate() - diff);
+  return dt.toISOString().slice(0,10);
+}
+
+function formatWeekLabel(weekStart){
+  const start = new Date(weekStart + 'T00:00:00Z');
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const startLabel = start.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  const endLabel = end.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  return `Week of ${startLabel} – ${endLabel}`;
+}
+</script>
+</body>
+</html>
