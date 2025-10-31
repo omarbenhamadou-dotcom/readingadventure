@@ -47,16 +47,13 @@
       <textarea id="notes"></textarea>
     </div>
     <div class="field photo-field">
-        <label>Take a picture of the book</label>
-        <input id="photo" class="hidden" type="file" accept="image/*" capture="environment"/>
-        <div class="row">
-          <button class="icon-btn photo-btn" id="btnPhoto" type="button"><i class="icon icon-camera" aria-hidden="true"></i></button>
-          <span id="photoStatus" class="hint">No photo yet</span>
-        </div>
+      <label>Take a picture of the book</label>
+      <input id="photo" class="hidden" type="file" accept="image/*" capture="environment"/>
+      <div class="row photo-actions">
+        <button class="icon-btn photo-btn" id="btnPhoto" type="button"><i class="icon icon-camera" aria-hidden="true"></i></button>
+        <span id="photoStatus" class="hint">No photo yet</span>
+        <button class="btn" id="btnSubmit">Submit</button>
       </div>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button class="btn" id="btnSubmit">Submit</button>
       <div id="submitStatus" class="status"></div>
     </div>
   </div>
