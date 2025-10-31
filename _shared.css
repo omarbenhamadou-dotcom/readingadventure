@@ -388,9 +388,26 @@ textarea{min-height:100px;resize:vertical}
 .comment-body{margin-top:3px;white-space:pre-wrap}
 .comment-form{display:grid;grid-template-columns:1fr 140px;gap:4px;font-size:12px;align-items:flex-start}
 .comment-form textarea{grid-column:1/2;font-size:12px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;min-height:60px;resize:vertical}
-.comment-form .comment-side{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-.comment-form .comment-side input{font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:10px}
-.comment-form .comment-side .btn{align-self:flex-start}
+.comment-form .comment-side{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:stretch;
+  width:100%;
+}
+.comment-form .comment-side input{
+  font-size:12px;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  width:100%;
+  max-width:100%;
+}
+.comment-form .comment-side .btn{
+  align-self:stretch;
+  width:100%;
+  max-width:100%;
+}
 .comment-section .status{margin:0;font-size:12px}
 .btn.small{padding:6px 10px;font-size:12px}
 .meta{display:flex;flex-direction:column;gap:6px;flex:1}
